@@ -100,6 +100,15 @@ export default function HeartRateMonitor() {
         return (arr[i - 1] + val + arr[i + 1]) / 3;
       });
 
+      const min = Math.min(...smoothed);
+      const max = Math.max(...smoothed);
+
+      if (max - min < 5) {
+        setStatus("No se detecta señal válida. Ajusta tu dedo o prueba de nuevo.");
+        setIsMeasuring(false);
+        return;
+      }
+
       let peaks = 0;
       for (let i = 1; i < smoothed.length - 1; i++) {
         if (
