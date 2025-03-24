@@ -8,6 +8,7 @@ export default function HeartRateMonitor() {
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [status, setStatus] = useState("Coloca tu dedo sobre la cámara y presiona Iniciar");
   const [error, setError] = useState(null);
+  const [torchWarning, setTorchWarning] = useState(false);
 
   useEffect(() => {
     let stream;
@@ -21,8 +22,20 @@ export default function HeartRateMonitor() {
           },
         };
         stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        const track = stream.getVideoTracks()[0];
+        const capabilities = track.getCapabilities();
+
+        if (capabilities.torch) {
+          await track.applyConstraints({ advanced: [{ torch: true }] });
+          console.log("✅ Flash activado");
+        } else {
+          console.warn("⚠️ Torch no soportado en esta cámara");
+          setTorchWarning(true);
+        }
       } catch (err) {
         console.warn("Cámara trasera no disponible, usando cámara por defecto");
+        setTorchWarning(true);
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: true });
         } catch (finalErr) {
@@ -95,6 +108,11 @@ export default function HeartRateMonitor() {
       <canvas ref={canvasRef} width="300" height="200" className="hidden" />
 
       {error && <p className="text-red-600 mb-4">{error}</p>}
+      {torchWarning && (
+        <p className="text-yellow-600 mb-4">
+          🔦 Tu dispositivo no permite activar el flash automáticamente. Por favor, enciéndelo manualmente.
+        </p>
+      )}
 
       <p className="mb-4">{status}</p>
 
@@ -103,6 +121,7 @@ export default function HeartRateMonitor() {
           setBpm(null);
           setDataPoints([]);
           setError(null);
+          setTorchWarning(false);
           setIsMeasuring(true);
           setStatus("Coloca tu dedo sobre la cámara");
         }}
