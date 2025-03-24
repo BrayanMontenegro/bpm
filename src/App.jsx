@@ -10,26 +10,44 @@ export default function HeartRateMonitor() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (isMeasuring) {
-      navigator.mediaDevices.getUserMedia({ video: true })
-        .then(stream => {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play();
-          setStatus("Midiendo... mantén el dedo sobre la cámara");
-        })
-        .catch(err => {
-          console.error("Error accediendo a la cámara:", err);
-          setError("No se pudo acceder a la cámara. Asegúrate de conceder permisos y que tu navegador esté en HTTPS.");
+    let stream;
+    async function initCamera() {
+      try {
+        const constraints = {
+          video: {
+            facingMode: { exact: "environment" },
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+          },
+        };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (err) {
+        console.warn("Cámara trasera no disponible, usando cámara por defecto");
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        } catch (finalErr) {
+          setError("No se pudo acceder a la cámara. Verifica permisos y HTTPS.");
           setIsMeasuring(false);
-        });
-    } else {
-      const tracks = videoRef.current?.srcObject?.getTracks();
-      tracks?.forEach(track => track.stop());
-      setStatus("Coloca tu dedo sobre la cámara y presiona Iniciar");
-      setBpm(null);
-      setDataPoints([]);
-      setError(null);
+          return;
+        }
+      }
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+        setStatus("Midiendo... mantén el dedo sobre la cámara");
+      }
     }
+
+    if (isMeasuring) {
+      initCamera();
+    }
+
+    return () => {
+      if (videoRef.current?.srcObject) {
+        videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
+      }
+    };
   }, [isMeasuring]);
 
   useEffect(() => {
@@ -39,31 +57,19 @@ export default function HeartRateMonitor() {
         const canvas = canvasRef.current;
         const video = videoRef.current;
         const ctx = canvas.getContext("2d");
+
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
         const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const reds = [];
 
+        const reds = [];
         for (let i = 0; i < frame.data.length; i += 4) {
           reds.push(frame.data[i]);
         }
 
         const avgRed = reds.reduce((a, b) => a + b, 0) / reds.length;
-        setDataPoints(prev => {
-          const updated = [...prev.slice(-100), avgRed];
-          if (updated.length > 10) {
-            const variation = Math.max(...updated) - Math.min(...updated);
-            if (variation < 5) {
-              setStatus("No se detecta señal. Ajusta tu dedo.");
-            } else {
-              setStatus("Señal detectada ✅ Calculando BPM...");
-            }
-          }
-          return updated;
-        });
+        setDataPoints((prev) => [...prev.slice(-100), avgRed]);
       }, 100);
     }
-
     return () => clearInterval(interval);
   }, [isMeasuring]);
 
@@ -75,39 +81,43 @@ export default function HeartRateMonitor() {
           peaks++;
         }
       }
-      const bpmEstimate = (peaks * 60) / 10;
+      const bpmEstimate = (peaks * 60) / 10; // Aproximado para 10 segundos
       setBpm(Math.round(bpmEstimate));
+      setStatus("Medición completa ✅");
+      setIsMeasuring(false);
     }
   }, [dataPoints]);
 
   return (
-    <div className="p-4">
+    <div className="p-4 text-center">
       <h1 className="text-xl font-bold mb-2">Medidor de Frecuencia Cardíaca</h1>
       <video ref={videoRef} width="300" height="200" className="hidden" />
       <canvas ref={canvasRef} width="300" height="200" className="hidden" />
 
-      {error && (
-        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded">
-          <p>{error}</p>
-        </div>
-      )}
+      {error && <p className="text-red-600 mb-4">{error}</p>}
 
-      {!error && (
-        <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4 rounded">
-          <p>{status}</p>
-        </div>
-      )}
+      <p className="mb-4">{status}</p>
 
       <button
-        onClick={() => setIsMeasuring(prev => !prev)}
-        className={`px-4 py-2 rounded text-white ${isMeasuring ? "bg-red-500" : "bg-blue-500"}`}
+        onClick={() => {
+          setBpm(null);
+          setDataPoints([]);
+          setError(null);
+          setIsMeasuring(true);
+          setStatus("Coloca tu dedo sobre la cámara");
+        }}
+        disabled={isMeasuring}
+        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
       >
-        {isMeasuring ? "Detener" : "Iniciar"}
+        {isMeasuring ? "Midiendo..." : "Iniciar Medición"}
       </button>
 
-      <div className="mt-4">
-        <p className="text-lg">BPM estimado: {bpm ?? "---"}</p>
-      </div>
+      {bpm && (
+        <div className="mt-4">
+          <p className="text-lg">BPM estimado:</p>
+          <p className="text-4xl font-bold text-red-600">{bpm}</p>
+        </div>
+      )}
     </div>
   );
 }
