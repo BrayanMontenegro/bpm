@@ -1,4 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
+import { Line } from "react-chartjs-2";
+import {
+  Chart as ChartJS,
+  LineElement,
+  PointElement,
+  LinearScale,
+  CategoryScale,
+} from "chart.js";
+
+ChartJS.register(LineElement, PointElement, LinearScale, CategoryScale);
 
 export default function HeartRateMonitor() {
   const videoRef = useRef(null);
@@ -10,8 +20,8 @@ export default function HeartRateMonitor() {
   const [error, setError] = useState(null);
   const [torchWarning, setTorchWarning] = useState(false);
 
-  const SAMPLE_DURATION = 200; // 200 muestras ~20 segundos a 100ms
-  const PEAK_THRESHOLD = 2;    // diferencia mínima para contar un pico
+  const SAMPLE_DURATION = 200;
+  const PEAK_THRESHOLD = 2;
 
   useEffect(() => {
     let stream;
@@ -94,7 +104,6 @@ export default function HeartRateMonitor() {
 
   useEffect(() => {
     if (dataPoints.length >= SAMPLE_DURATION) {
-      // aplicar media móvil para suavizar
       const smoothed = dataPoints.map((val, i, arr) => {
         if (i === 0 || i === arr.length - 1) return val;
         return (arr[i - 1] + val + arr[i + 1]) / 3;
@@ -121,7 +130,7 @@ export default function HeartRateMonitor() {
         }
       }
 
-      const durationInSeconds = SAMPLE_DURATION * 0.1; // cada muestra es 100ms
+      const durationInSeconds = SAMPLE_DURATION * 0.1;
       const bpmEstimate = (peaks * 60) / durationInSeconds;
 
       setBpm(Math.round(bpmEstimate));
@@ -129,6 +138,19 @@ export default function HeartRateMonitor() {
       setIsMeasuring(false);
     }
   }, [dataPoints]);
+
+  const chartData = {
+    labels: dataPoints.map((_, i) => i),
+    datasets: [
+      {
+        label: "Intensidad canal rojo",
+        data: dataPoints,
+        fill: false,
+        borderColor: "#f43f5e",
+        tension: 0.3,
+      },
+    ],
+  };
 
   return (
     <div className="p-4 text-center">
@@ -164,6 +186,13 @@ export default function HeartRateMonitor() {
         <div className="mt-4">
           <p className="text-lg">BPM estimado:</p>
           <p className="text-4xl font-bold text-red-600">{bpm}</p>
+        </div>
+      )}
+
+      {dataPoints.length > 10 && (
+        <div className="mt-6">
+          <h2 className="text-lg font-semibold mb-2">Señal captada</h2>
+          <Line data={chartData} options={{ responsive: true, scales: { x: { display: false }, y: { beginAtZero: false } } }} />
         </div>
       )}
     </div>
