@@ -10,6 +10,9 @@ export default function HeartRateMonitor() {
   const [error, setError] = useState(null);
   const [torchWarning, setTorchWarning] = useState(false);
 
+  const SAMPLE_DURATION = 200; // 200 muestras ~20 segundos a 100ms
+  const PEAK_THRESHOLD = 2;    // diferencia mínima para contar un pico
+
   useEffect(() => {
     let stream;
     async function initCamera() {
@@ -80,21 +83,38 @@ export default function HeartRateMonitor() {
         }
 
         const avgRed = reds.reduce((a, b) => a + b, 0) / reds.length;
-        setDataPoints((prev) => [...prev.slice(-100), avgRed]);
+        setDataPoints((prev) => {
+          const updated = [...prev.slice(-SAMPLE_DURATION + 1), avgRed];
+          return updated;
+        });
       }, 100);
     }
     return () => clearInterval(interval);
   }, [isMeasuring]);
 
   useEffect(() => {
-    if (dataPoints.length >= 100) {
+    if (dataPoints.length >= SAMPLE_DURATION) {
+      // aplicar media móvil para suavizar
+      const smoothed = dataPoints.map((val, i, arr) => {
+        if (i === 0 || i === arr.length - 1) return val;
+        return (arr[i - 1] + val + arr[i + 1]) / 3;
+      });
+
       let peaks = 0;
-      for (let i = 1; i < dataPoints.length - 1; i++) {
-        if (dataPoints[i] > dataPoints[i - 1] && dataPoints[i] > dataPoints[i + 1]) {
+      for (let i = 1; i < smoothed.length - 1; i++) {
+        if (
+          smoothed[i] > smoothed[i - 1] &&
+          smoothed[i] > smoothed[i + 1] &&
+          (smoothed[i] - smoothed[i - 1]) > PEAK_THRESHOLD &&
+          (smoothed[i] - smoothed[i + 1]) > PEAK_THRESHOLD
+        ) {
           peaks++;
         }
       }
-      const bpmEstimate = (peaks * 60) / 10; // Aproximado para 10 segundos
+
+      const durationInSeconds = SAMPLE_DURATION * 0.1; // cada muestra es 100ms
+      const bpmEstimate = (peaks * 60) / durationInSeconds;
+
       setBpm(Math.round(bpmEstimate));
       setStatus("Medición completa ✅");
       setIsMeasuring(false);
