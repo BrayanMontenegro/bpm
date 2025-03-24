@@ -1,7 +1,4 @@
 import React, { useEffect, useRef, useState } from "react";
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
 
 export default function HeartRateFitStyle() {
   const videoRef = useRef(null);
@@ -11,17 +8,24 @@ export default function HeartRateFitStyle() {
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [pulsing, setPulsing] = useState(false);
   const [error, setError] = useState(null);
+  const [torchWarning, setTorchWarning] = useState(false);
 
   useEffect(() => {
     let stream;
     async function initCamera() {
       try {
         const constraints = {
-          video: { facingMode: { exact: "environment" } }
+          video: {
+            facingMode: { exact: "environment" },
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            advanced: [{ torch: true }]
+          }
         };
         stream = await navigator.mediaDevices.getUserMedia(constraints);
       } catch (e) {
-        console.warn("Cámara trasera no disponible, usando cámara predeterminada.");
+        console.warn("Torch no disponible o cámara trasera no accesible:", e);
+        setTorchWarning(true);
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: true });
         } catch (err) {
@@ -100,6 +104,12 @@ export default function HeartRateFitStyle() {
         </div>
       </div>
 
+      {torchWarning && (
+        <div className="text-yellow-600 text-center mb-2 max-w-xs">
+          🔦 Tu dispositivo no permite activar el flash automáticamente. Por favor, enciéndelo manualmente antes de comenzar.
+        </div>
+      )}
+
       {error && (
         <div className="text-red-600 text-center mb-4 max-w-xs">
           <p>{error}</p>
@@ -110,6 +120,7 @@ export default function HeartRateFitStyle() {
         onClick={() => {
           setBpm(null);
           setError(null);
+          setTorchWarning(false);
           setIsMeasuring(true);
           setStatus("Coloca tu dedo sobre la cámara");
         }}
