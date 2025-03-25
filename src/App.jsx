@@ -21,9 +21,9 @@ export default function HeartRateMonitor() {
   const [error, setError] = useState(null);
   const [torchWarning, setTorchWarning] = useState(false);
 
-  const SAMPLE_DURATION = 150;
+  const SAMPLE_DURATION = 450; // 450 muestras a 33ms ~15 segundos
   const PEAK_THRESHOLD = 1;
-  const OFFSET = 20;
+  const OFFSET = 30; // ignorar primeras 30 muestras
 
   useEffect(() => {
     let stream;
@@ -103,7 +103,7 @@ export default function HeartRateMonitor() {
           setCenteredPoints(centrado);
           return updated;
         });
-      }, 100);
+      }, 33); // nueva frecuencia de muestreo: 30 veces por segundo
     }
     return () => clearInterval(interval);
   }, [isMeasuring]);
@@ -137,7 +137,7 @@ export default function HeartRateMonitor() {
         }
       }
 
-      const durationInSeconds = SAMPLE_DURATION * 0.1;
+      const durationInSeconds = SAMPLE_DURATION * 0.033; // 33ms por muestra
       const bpmEstimate = (peaks * 60) / durationInSeconds;
 
       setBpm(Math.round(bpmEstimate));
