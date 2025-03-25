@@ -135,12 +135,7 @@ export default function HeartRateMonitor() {
 
       setBpm(Math.round(bpmEstimate));
       setStatus("Medición completa ✅");
-      setTimeout(() => {
-        setBpm(null);
-        setDataPoints([]);
-        setStatus("Reiniciando medición...");
-        setIsMeasuring(true);
-      }, 3000); // espera 3 segundos y vuelve a medir
+      setIsMeasuring(false);
     }
   }, [dataPoints]);
 
@@ -172,22 +167,37 @@ export default function HeartRateMonitor() {
 
       <p className="mb-4">{status}</p>
 
-      <button
-        onClick={() => {
-          setBpm(null);
-          setDataPoints([]);
-          setError(null);
-          setTorchWarning(false);
-          setIsMeasuring(true);
-          setStatus("Coloca tu dedo sobre la cámara");
-        }}
-        disabled={isMeasuring}
-        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-      >
-        {isMeasuring ? "Midiendo..." : "Iniciar Medición"}
-      </button>
+      <div className="flex justify-center gap-4 mb-4">
+        <button
+          onClick={() => {
+            setBpm(null);
+            setDataPoints([]);
+            setError(null);
+            setTorchWarning(false);
+            setIsMeasuring(true);
+            setStatus("Coloca tu dedo sobre la cámara");
+          }}
+          disabled={isMeasuring}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+        >
+          {isMeasuring ? "Midiendo..." : "Iniciar Medición"}
+        </button>
 
-      {bpm && (
+        {!isMeasuring && bpm !== null && (
+          <button
+            onClick={() => {
+              setBpm(null);
+              setDataPoints([]);
+              setStatus("Coloca tu dedo sobre la cámara y presiona Iniciar");
+            }}
+            className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
+          >
+            Reiniciar
+          </button>
+        )}
+      </div>
+
+      {bpm !== null && (
         <div className="mt-4">
           <p className="text-lg">BPM estimado:</p>
           <p className="text-4xl font-bold text-red-600">{bpm}</p>
