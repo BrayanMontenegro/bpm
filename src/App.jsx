@@ -1,29 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Line } from "react-chartjs-2";
-import {
-  Chart as ChartJS,
-  LineElement,
-  PointElement,
-  LinearScale,
-  CategoryScale,
-} from "chart.js";
-
-ChartJS.register(LineElement, PointElement, LinearScale, CategoryScale);
 
 export default function HeartRateMonitor() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [bpm, setBpm] = useState(null);
   const [dataPoints, setDataPoints] = useState([]);
-  const [centeredPoints, setCenteredPoints] = useState([]);
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [status, setStatus] = useState("Coloca tu dedo sobre la cámara y presiona Iniciar");
   const [error, setError] = useState(null);
-  const [torchWarning, setTorchWarning] = useState(false);
-
-  const SAMPLE_DURATION = 450; // 450 muestras a 33ms ~15 segundos
-  const PEAK_THRESHOLD = 1;
-  const OFFSET = 30; // ignorar primeras 30 muestras
 
   useEffect(() => {
     let stream;
@@ -37,20 +21,8 @@ export default function HeartRateMonitor() {
           },
         };
         stream = await navigator.mediaDevices.getUserMedia(constraints);
-
-        const track = stream.getVideoTracks()[0];
-        const capabilities = track.getCapabilities();
-
-        if (capabilities.torch) {
-          await track.applyConstraints({ advanced: [{ torch: true }] });
-          console.log("✅ Flash activado");
-        } else {
-          console.warn("⚠️ Torch no soportado en esta cámara");
-          setTorchWarning(true);
-        }
       } catch (err) {
         console.warn("Cámara trasera no disponible, usando cámara por defecto");
-        setTorchWarning(true);
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: true });
         } catch (finalErr) {
@@ -95,69 +67,26 @@ export default function HeartRateMonitor() {
         }
 
         const avgRed = reds.reduce((a, b) => a + b, 0) / reds.length;
-
-        setDataPoints((prev) => {
-          const updated = [...prev.slice(-SAMPLE_DURATION + 1), avgRed];
-          const media = updated.reduce((a, b) => a + b, 0) / updated.length;
-          const centrado = updated.map(v => v - media);
-          setCenteredPoints(centrado);
-          return updated;
-        });
-      }, 33); // nueva frecuencia de muestreo: 30 veces por segundo
+        setDataPoints((prev) => [...prev.slice(-100), avgRed]);
+      }, 100);
     }
     return () => clearInterval(interval);
   }, [isMeasuring]);
 
   useEffect(() => {
-    if (centeredPoints.length >= SAMPLE_DURATION) {
-      const smoothed = centeredPoints.map((val, i, arr) => {
-        if (i === 0 || i === arr.length - 1) return val;
-        return (arr[i - 1] + val + arr[i + 1]) / 3;
-      });
-
-      const trimmed = smoothed.slice(OFFSET);
-      const min = Math.min(...trimmed);
-      const max = Math.max(...trimmed);
-
-      if (max - min < 2) {
-        setStatus("No se detecta señal válida. Ajusta tu dedo o prueba de nuevo.");
-        setIsMeasuring(false);
-        return;
-      }
-
+    if (dataPoints.length >= 100) {
       let peaks = 0;
-      for (let i = 1; i < trimmed.length - 1; i++) {
-        if (
-          trimmed[i] > trimmed[i - 1] &&
-          trimmed[i] > trimmed[i + 1] &&
-          (trimmed[i] - trimmed[i - 1]) > PEAK_THRESHOLD &&
-          (trimmed[i] - trimmed[i + 1]) > PEAK_THRESHOLD
-        ) {
+      for (let i = 1; i < dataPoints.length - 1; i++) {
+        if (dataPoints[i] > dataPoints[i - 1] && dataPoints[i] > dataPoints[i + 1]) {
           peaks++;
         }
       }
-
-      const durationInSeconds = SAMPLE_DURATION * 0.033; // 33ms por muestra
-      const bpmEstimate = (peaks * 60) / durationInSeconds;
-
+      const bpmEstimate = (peaks * 60) / 10; // Aproximado para 10 segundos
       setBpm(Math.round(bpmEstimate));
       setStatus("Medición completa ✅");
       setIsMeasuring(false);
     }
-  }, [centeredPoints]);
-
-  const chartData = {
-    labels: centeredPoints.map((_, i) => i),
-    datasets: [
-      {
-        label: "Señal centrada",
-        data: centeredPoints,
-        fill: false,
-        borderColor: "#f43f5e",
-        tension: 0.3,
-      },
-    ],
-  };
+  }, [dataPoints]);
 
   return (
     <div className="p-4 text-center">
@@ -166,57 +95,27 @@ export default function HeartRateMonitor() {
       <canvas ref={canvasRef} width="300" height="200" className="hidden" />
 
       {error && <p className="text-red-600 mb-4">{error}</p>}
-      {torchWarning && (
-        <p className="text-yellow-600 mb-4">
-          🔦 Tu dispositivo no permite activar el flash automáticamente. Por favor, enciéndelo manualmente.
-        </p>
-      )}
 
       <p className="mb-4">{status}</p>
 
-      <div className="flex justify-center gap-4 mb-4">
-        <button
-          onClick={() => {
-            setBpm(null);
-            setDataPoints([]);
-            setCenteredPoints([]);
-            setError(null);
-            setTorchWarning(false);
-            setIsMeasuring(true);
-            setStatus("Coloca tu dedo sobre la cámara");
-          }}
-          disabled={isMeasuring}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-        >
-          {isMeasuring ? "Midiendo..." : "Iniciar Medición"}
-        </button>
+      <button
+        onClick={() => {
+          setBpm(null);
+          setDataPoints([]);
+          setError(null);
+          setIsMeasuring(true);
+          setStatus("Coloca tu dedo sobre la cámara");
+        }}
+        disabled={isMeasuring}
+        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+      >
+        {isMeasuring ? "Midiendo..." : "Iniciar Medición"}
+      </button>
 
-        {!isMeasuring && bpm !== null && (
-          <button
-            onClick={() => {
-              setBpm(null);
-              setDataPoints([]);
-              setCenteredPoints([]);
-              setStatus("Coloca tu dedo sobre la cámara y presiona Iniciar");
-            }}
-            className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
-          >
-            Reiniciar
-          </button>
-        )}
-      </div>
-
-      {bpm !== null && (
+      {bpm && (
         <div className="mt-4">
           <p className="text-lg">BPM estimado:</p>
           <p className="text-4xl font-bold text-red-600">{bpm}</p>
-        </div>
-      )}
-
-      {centeredPoints.length > 10 && (
-        <div className="mt-6">
-          <h2 className="text-lg font-semibold mb-2">Señal captada</h2>
-          <Line data={chartData} options={{ responsive: true, scales: { x: { display: false }, y: { beginAtZero: false } } }} />
         </div>
       )}
     </div>
