@@ -1,14 +1,28 @@
+// Componente mejorado sin flash por defecto, con opción para encenderlo manualmente, e incluye señal captada con chart.js
 import React, { useEffect, useRef, useState } from "react";
+import { Line } from "react-chartjs-2";
+import {
+  Chart as ChartJS,
+  LineElement,
+  PointElement,
+  LinearScale,
+  CategoryScale,
+} from "chart.js";
+
+ChartJS.register(LineElement, PointElement, LinearScale, CategoryScale);
 
 export default function HeartRateMonitor() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [bpm, setBpm] = useState(null);
   const [dataPoints, setDataPoints] = useState([]);
+  const [centeredPoints, setCenteredPoints] = useState([]);
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [status, setStatus] = useState("Coloca tu dedo sobre la cámara y presiona Iniciar");
   const [error, setError] = useState(null);
-  const SAMPLE_DURATION = 450; // ~15s con 33ms
+  const [useTorch, setUseTorch] = useState(false);
+
+  const SAMPLE_DURATION = 450;
   const PEAK_THRESHOLD = 1;
   const OFFSET = 30;
 
@@ -24,13 +38,12 @@ export default function HeartRateMonitor() {
           },
         };
         stream = await navigator.mediaDevices.getUserMedia(constraints);
+
         const track = stream.getVideoTracks()[0];
         const capabilities = track.getCapabilities();
 
-        // Activar flash si está disponible
-        if (capabilities.torch) {
+        if (useTorch && capabilities.torch) {
           await track.applyConstraints({ advanced: [{ torch: true }] });
-          console.log("✅ Flash activado");
         }
       } catch (err) {
         console.warn("Cámara trasera no disponible, usando cámara por defecto");
@@ -59,7 +72,7 @@ export default function HeartRateMonitor() {
         videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [isMeasuring]);
+  }, [isMeasuring, useTorch]);
 
   useEffect(() => {
     let interval;
@@ -78,25 +91,35 @@ export default function HeartRateMonitor() {
         }
 
         const avgRed = reds.reduce((a, b) => a + b, 0) / reds.length;
-        setDataPoints((prev) => [...prev.slice(-SAMPLE_DURATION + 1), avgRed]);
-      }, 33); // más muestras por segundo
+        setDataPoints((prev) => {
+          const updated = [...prev.slice(-SAMPLE_DURATION + 1), avgRed];
+          const media = updated.reduce((a, b) => a + b, 0) / updated.length;
+          const centrado = updated.map(v => v - media);
+          setCenteredPoints(centrado);
+          return updated;
+        });
+      }, 33);
     }
     return () => clearInterval(interval);
   }, [isMeasuring]);
 
   useEffect(() => {
-    if (dataPoints.length >= SAMPLE_DURATION) {
-      // Centrar señal
-      const mean = dataPoints.reduce((a, b) => a + b, 0) / dataPoints.length;
-      const centered = dataPoints.map((v) => v - mean);
-
-      // Suavizado simple (media móvil de 3)
-      const smoothed = centered.map((v, i, arr) => {
-        if (i === 0 || i === arr.length - 1) return v;
-        return (arr[i - 1] + v + arr[i + 1]) / 3;
+    if (centeredPoints.length >= SAMPLE_DURATION) {
+      const smoothed = centeredPoints.map((val, i, arr) => {
+        if (i === 0 || i === arr.length - 1) return val;
+        return (arr[i - 1] + val + arr[i + 1]) / 3;
       });
 
       const trimmed = smoothed.slice(OFFSET);
+      const min = Math.min(...trimmed);
+      const max = Math.max(...trimmed);
+
+      if (max - min < 2) {
+        setStatus("No se detecta señal válida. Ajusta tu dedo o prueba de nuevo.");
+        setIsMeasuring(false);
+        return;
+      }
+
       let peaks = 0;
       for (let i = 1; i < trimmed.length - 1; i++) {
         if (
@@ -115,7 +138,20 @@ export default function HeartRateMonitor() {
       setStatus("Medición completa ✅");
       setIsMeasuring(false);
     }
-  }, [dataPoints]);
+  }, [centeredPoints]);
+
+  const chartData = {
+    labels: centeredPoints.map((_, i) => i),
+    datasets: [
+      {
+        label: "Señal captada",
+        data: centeredPoints,
+        fill: false,
+        borderColor: "#f43f5e",
+        tension: 0.3,
+      },
+    ],
+  };
 
   return (
     <div className="p-4 text-center">
@@ -127,24 +163,44 @@ export default function HeartRateMonitor() {
 
       <p className="mb-4">{status}</p>
 
-      <button
-        onClick={() => {
-          setBpm(null);
-          setDataPoints([]);
-          setError(null);
-          setIsMeasuring(true);
-          setStatus("Coloca tu dedo sobre la cámara");
-        }}
-        disabled={isMeasuring}
-        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-      >
-        {isMeasuring ? "Midiendo..." : "Iniciar Medición"}
-      </button>
+      <div className="flex justify-center gap-4 mb-4">
+        <button
+          onClick={() => {
+            setBpm(null);
+            setDataPoints([]);
+            setCenteredPoints([]);
+            setError(null);
+            setIsMeasuring(true);
+            setStatus("Coloca tu dedo sobre la cámara");
+          }}
+          disabled={isMeasuring}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+        >
+          {isMeasuring ? "Midiendo..." : "Iniciar Medición"}
+        </button>
 
-      {bpm && (
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={useTorch}
+            onChange={() => setUseTorch(!useTorch)}
+            disabled={isMeasuring}
+          />
+          Activar Flash
+        </label>
+      </div>
+
+      {bpm !== null && (
         <div className="mt-4">
           <p className="text-lg">BPM estimado:</p>
           <p className="text-4xl font-bold text-red-600">{bpm}</p>
+        </div>
+      )}
+
+      {centeredPoints.length > 10 && (
+        <div className="mt-6">
+          <h2 className="text-lg font-semibold mb-2">Señal captada</h2>
+          <Line data={chartData} options={{ responsive: true, scales: { x: { display: false }, y: { beginAtZero: false } } }} />
         </div>
       )}
     </div>
