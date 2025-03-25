@@ -1,4 +1,3 @@
-// Componente mejorado sin flash por defecto, con opción para encenderlo manualmente, e incluye señal captada con chart.js
 import React, { useEffect, useRef, useState } from "react";
 import { Line } from "react-chartjs-2";
 import {
@@ -16,15 +15,10 @@ export default function HeartRateMonitor() {
   const canvasRef = useRef(null);
   const [bpm, setBpm] = useState(null);
   const [dataPoints, setDataPoints] = useState([]);
-  const [centeredPoints, setCenteredPoints] = useState([]);
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [status, setStatus] = useState("Coloca tu dedo sobre la cámara y presiona Iniciar");
   const [error, setError] = useState(null);
   const [useTorch, setUseTorch] = useState(false);
-
-  const SAMPLE_DURATION = 450;
-  const PEAK_THRESHOLD = 1;
-  const OFFSET = 30;
 
   useEffect(() => {
     let stream;
@@ -91,61 +85,33 @@ export default function HeartRateMonitor() {
         }
 
         const avgRed = reds.reduce((a, b) => a + b, 0) / reds.length;
-        setDataPoints((prev) => {
-          const updated = [...prev.slice(-SAMPLE_DURATION + 1), avgRed];
-          const media = updated.reduce((a, b) => a + b, 0) / updated.length;
-          const centrado = updated.map(v => v - media);
-          setCenteredPoints(centrado);
-          return updated;
-        });
-      }, 33);
+        setDataPoints((prev) => [...prev.slice(-100), avgRed]);
+      }, 100);
     }
     return () => clearInterval(interval);
   }, [isMeasuring]);
 
   useEffect(() => {
-    if (centeredPoints.length >= SAMPLE_DURATION) {
-      const smoothed = centeredPoints.map((val, i, arr) => {
-        if (i === 0 || i === arr.length - 1) return val;
-        return (arr[i - 1] + val + arr[i + 1]) / 3;
-      });
-
-      const trimmed = smoothed.slice(OFFSET);
-      const min = Math.min(...trimmed);
-      const max = Math.max(...trimmed);
-
-      if (max - min < 2) {
-        setStatus("No se detecta señal válida. Ajusta tu dedo o prueba de nuevo.");
-        setIsMeasuring(false);
-        return;
-      }
-
+    if (dataPoints.length >= 100) {
       let peaks = 0;
-      for (let i = 1; i < trimmed.length - 1; i++) {
-        if (
-          trimmed[i] > trimmed[i - 1] &&
-          trimmed[i] > trimmed[i + 1] &&
-          (trimmed[i] - trimmed[i - 1]) > PEAK_THRESHOLD &&
-          (trimmed[i] - trimmed[i + 1]) > PEAK_THRESHOLD
-        ) {
+      for (let i = 1; i < dataPoints.length - 1; i++) {
+        if (dataPoints[i] > dataPoints[i - 1] && dataPoints[i] > dataPoints[i + 1]) {
           peaks++;
         }
       }
-
-      const durationInSeconds = SAMPLE_DURATION * 0.033;
-      const bpmEstimate = (peaks * 60) / durationInSeconds;
+      const bpmEstimate = (peaks * 60) / 10; // Aproximado para 10 segundos
       setBpm(Math.round(bpmEstimate));
       setStatus("Medición completa ✅");
       setIsMeasuring(false);
     }
-  }, [centeredPoints]);
+  }, [dataPoints]);
 
   const chartData = {
-    labels: centeredPoints.map((_, i) => i),
+    labels: dataPoints.map((_, i) => i),
     datasets: [
       {
         label: "Señal captada",
-        data: centeredPoints,
+        data: dataPoints,
         fill: false,
         borderColor: "#f43f5e",
         tension: 0.3,
@@ -168,7 +134,6 @@ export default function HeartRateMonitor() {
           onClick={() => {
             setBpm(null);
             setDataPoints([]);
-            setCenteredPoints([]);
             setError(null);
             setIsMeasuring(true);
             setStatus("Coloca tu dedo sobre la cámara");
@@ -190,14 +155,14 @@ export default function HeartRateMonitor() {
         </label>
       </div>
 
-      {bpm !== null && (
+      {bpm && (
         <div className="mt-4">
           <p className="text-lg">BPM estimado:</p>
           <p className="text-4xl font-bold text-red-600">{bpm}</p>
         </div>
       )}
 
-      {centeredPoints.length > 10 && (
+      {dataPoints.length > 10 && (
         <div className="mt-6">
           <h2 className="text-lg font-semibold mb-2">Señal captada</h2>
           <Line data={chartData} options={{ responsive: true, scales: { x: { display: false }, y: { beginAtZero: false } } }} />
