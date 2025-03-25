@@ -20,8 +20,9 @@ export default function HeartRateMonitor() {
   const [error, setError] = useState(null);
   const [torchWarning, setTorchWarning] = useState(false);
 
-  const SAMPLE_DURATION = 200;
-  const PEAK_THRESHOLD = 2;
+  const SAMPLE_DURATION = 150; // 15 segundos a 100ms
+  const PEAK_THRESHOLD = 1;    // menor sensibilidad para detectar picos
+  const OFFSET = 20;           // ignorar primeras 20 muestras
 
   useEffect(() => {
     let stream;
@@ -109,8 +110,9 @@ export default function HeartRateMonitor() {
         return (arr[i - 1] + val + arr[i + 1]) / 3;
       });
 
-      const min = Math.min(...smoothed);
-      const max = Math.max(...smoothed);
+      const trimmed = smoothed.slice(OFFSET);
+      const min = Math.min(...trimmed);
+      const max = Math.max(...trimmed);
 
       if (max - min < 5) {
         setStatus("No se detecta señal válida. Ajusta tu dedo o prueba de nuevo.");
@@ -119,12 +121,12 @@ export default function HeartRateMonitor() {
       }
 
       let peaks = 0;
-      for (let i = 1; i < smoothed.length - 1; i++) {
+      for (let i = 1; i < trimmed.length - 1; i++) {
         if (
-          smoothed[i] > smoothed[i - 1] &&
-          smoothed[i] > smoothed[i + 1] &&
-          (smoothed[i] - smoothed[i - 1]) > PEAK_THRESHOLD &&
-          (smoothed[i] - smoothed[i + 1]) > PEAK_THRESHOLD
+          trimmed[i] > trimmed[i - 1] &&
+          trimmed[i] > trimmed[i + 1] &&
+          (trimmed[i] - trimmed[i - 1]) > PEAK_THRESHOLD &&
+          (trimmed[i] - trimmed[i + 1]) > PEAK_THRESHOLD
         ) {
           peaks++;
         }
