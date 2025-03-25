@@ -135,7 +135,12 @@ export default function HeartRateMonitor() {
 
       setBpm(Math.round(bpmEstimate));
       setStatus("Medición completa ✅");
-      setIsMeasuring(false);
+      setTimeout(() => {
+        setBpm(null);
+        setDataPoints([]);
+        setStatus("Reiniciando medición...");
+        setIsMeasuring(true);
+      }, 3000); // espera 3 segundos y vuelve a medir
     }
   }, [dataPoints]);
 
