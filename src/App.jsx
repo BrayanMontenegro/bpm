@@ -15,14 +15,15 @@ export default function HeartRateMonitor() {
   const canvasRef = useRef(null);
   const [bpm, setBpm] = useState(null);
   const [dataPoints, setDataPoints] = useState([]);
+  const [centeredPoints, setCenteredPoints] = useState([]);
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [status, setStatus] = useState("Coloca tu dedo sobre la cámara y presiona Iniciar");
   const [error, setError] = useState(null);
   const [torchWarning, setTorchWarning] = useState(false);
 
-  const SAMPLE_DURATION = 150; // 15 segundos a 100ms
-  const PEAK_THRESHOLD = 1;    // menor sensibilidad para detectar picos
-  const OFFSET = 20;           // ignorar primeras 20 muestras
+  const SAMPLE_DURATION = 150;
+  const PEAK_THRESHOLD = 1;
+  const OFFSET = 20;
 
   useEffect(() => {
     let stream;
@@ -94,8 +95,12 @@ export default function HeartRateMonitor() {
         }
 
         const avgRed = reds.reduce((a, b) => a + b, 0) / reds.length;
+
         setDataPoints((prev) => {
           const updated = [...prev.slice(-SAMPLE_DURATION + 1), avgRed];
+          const media = updated.reduce((a, b) => a + b, 0) / updated.length;
+          const centrado = updated.map(v => v - media);
+          setCenteredPoints(centrado);
           return updated;
         });
       }, 100);
@@ -104,8 +109,8 @@ export default function HeartRateMonitor() {
   }, [isMeasuring]);
 
   useEffect(() => {
-    if (dataPoints.length >= SAMPLE_DURATION) {
-      const smoothed = dataPoints.map((val, i, arr) => {
+    if (centeredPoints.length >= SAMPLE_DURATION) {
+      const smoothed = centeredPoints.map((val, i, arr) => {
         if (i === 0 || i === arr.length - 1) return val;
         return (arr[i - 1] + val + arr[i + 1]) / 3;
       });
@@ -114,7 +119,7 @@ export default function HeartRateMonitor() {
       const min = Math.min(...trimmed);
       const max = Math.max(...trimmed);
 
-      if (max - min < 5) {
+      if (max - min < 2) {
         setStatus("No se detecta señal válida. Ajusta tu dedo o prueba de nuevo.");
         setIsMeasuring(false);
         return;
@@ -139,14 +144,14 @@ export default function HeartRateMonitor() {
       setStatus("Medición completa ✅");
       setIsMeasuring(false);
     }
-  }, [dataPoints]);
+  }, [centeredPoints]);
 
   const chartData = {
-    labels: dataPoints.map((_, i) => i),
+    labels: centeredPoints.map((_, i) => i),
     datasets: [
       {
-        label: "Intensidad canal rojo",
-        data: dataPoints,
+        label: "Señal centrada",
+        data: centeredPoints,
         fill: false,
         borderColor: "#f43f5e",
         tension: 0.3,
@@ -174,6 +179,7 @@ export default function HeartRateMonitor() {
           onClick={() => {
             setBpm(null);
             setDataPoints([]);
+            setCenteredPoints([]);
             setError(null);
             setTorchWarning(false);
             setIsMeasuring(true);
@@ -190,6 +196,7 @@ export default function HeartRateMonitor() {
             onClick={() => {
               setBpm(null);
               setDataPoints([]);
+              setCenteredPoints([]);
               setStatus("Coloca tu dedo sobre la cámara y presiona Iniciar");
             }}
             className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
@@ -206,7 +213,7 @@ export default function HeartRateMonitor() {
         </div>
       )}
 
-      {dataPoints.length > 10 && (
+      {centeredPoints.length > 10 && (
         <div className="mt-6">
           <h2 className="text-lg font-semibold mb-2">Señal captada</h2>
           <Line data={chartData} options={{ responsive: true, scales: { x: { display: false }, y: { beginAtZero: false } } }} />
