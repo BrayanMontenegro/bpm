@@ -8,6 +8,9 @@ export default function HeartRateMonitor() {
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [status, setStatus] = useState("Coloca tu dedo sobre la cámara y presiona Iniciar");
   const [error, setError] = useState(null);
+  const SAMPLE_DURATION = 450; // ~15s con 33ms
+  const PEAK_THRESHOLD = 1;
+  const OFFSET = 30;
 
   useEffect(() => {
     let stream;
@@ -21,6 +24,14 @@ export default function HeartRateMonitor() {
           },
         };
         stream = await navigator.mediaDevices.getUserMedia(constraints);
+        const track = stream.getVideoTracks()[0];
+        const capabilities = track.getCapabilities();
+
+        // Activar flash si está disponible
+        if (capabilities.torch) {
+          await track.applyConstraints({ advanced: [{ torch: true }] });
+          console.log("✅ Flash activado");
+        }
       } catch (err) {
         console.warn("Cámara trasera no disponible, usando cámara por defecto");
         try {
@@ -67,21 +78,39 @@ export default function HeartRateMonitor() {
         }
 
         const avgRed = reds.reduce((a, b) => a + b, 0) / reds.length;
-        setDataPoints((prev) => [...prev.slice(-100), avgRed]);
-      }, 100);
+        setDataPoints((prev) => [...prev.slice(-SAMPLE_DURATION + 1), avgRed]);
+      }, 33); // más muestras por segundo
     }
     return () => clearInterval(interval);
   }, [isMeasuring]);
 
   useEffect(() => {
-    if (dataPoints.length >= 100) {
+    if (dataPoints.length >= SAMPLE_DURATION) {
+      // Centrar señal
+      const mean = dataPoints.reduce((a, b) => a + b, 0) / dataPoints.length;
+      const centered = dataPoints.map((v) => v - mean);
+
+      // Suavizado simple (media móvil de 3)
+      const smoothed = centered.map((v, i, arr) => {
+        if (i === 0 || i === arr.length - 1) return v;
+        return (arr[i - 1] + v + arr[i + 1]) / 3;
+      });
+
+      const trimmed = smoothed.slice(OFFSET);
       let peaks = 0;
-      for (let i = 1; i < dataPoints.length - 1; i++) {
-        if (dataPoints[i] > dataPoints[i - 1] && dataPoints[i] > dataPoints[i + 1]) {
+      for (let i = 1; i < trimmed.length - 1; i++) {
+        if (
+          trimmed[i] > trimmed[i - 1] &&
+          trimmed[i] > trimmed[i + 1] &&
+          (trimmed[i] - trimmed[i - 1]) > PEAK_THRESHOLD &&
+          (trimmed[i] - trimmed[i + 1]) > PEAK_THRESHOLD
+        ) {
           peaks++;
         }
       }
-      const bpmEstimate = (peaks * 60) / 10; // Aproximado para 10 segundos
+
+      const durationInSeconds = SAMPLE_DURATION * 0.033;
+      const bpmEstimate = (peaks * 60) / durationInSeconds;
       setBpm(Math.round(bpmEstimate));
       setStatus("Medición completa ✅");
       setIsMeasuring(false);
